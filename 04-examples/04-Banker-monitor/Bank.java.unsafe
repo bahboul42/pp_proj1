@@ -1,0 +1,14 @@
+public class Bank {
+    int cash;
+    
+    public void deposit(int n) { cash += n; }
+
+    public void withdraw(int n) {
+	if (cash >= n)
+	    cash -= n;
+    }
+
+    public int value() { return cash; }
+
+    public void reset() { cash = 0; }
+}

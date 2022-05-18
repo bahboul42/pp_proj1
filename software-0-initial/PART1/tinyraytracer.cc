@@ -203,6 +203,42 @@ Tinyraytracer::render(float anglev, float angleh, float anglel)
            -sin(anglev * M_PI / 180),
            cos(anglev * M_PI / 180) * cos(angleh * M_PI / 180));
  
+  for (size_t j = 0; j < height; j++)
+  { // actual rendering loop
+    for (size_t i = 0; i < width; i++)
+    {
+      Vec3f v_0 = ex * ((i + 0.5) - width / 2.) + ey * (-(j + 0.5) + height / 2.) + ez * (height / (-2. * tan(fov / 2.)));
+      Vec3f f = cast_ray(Vec3f(0, 0, 0), v_0.normalize(), anglel);
+      float max = std::max(f[0], std::max(f[1], f[2]));
+      if (max > 1)
+        f = f * (1. / max);
+      for (size_t k = 0; k < 3; k++)
+        pixmap[(j * width + i) * 4 + k] =
+            (unsigned char)(255 * std::max(0.f, std::min(1.f, f[k])));
+      pixmap[(j * width + i) * 4 + 3] = 255;
+    }
+  }
+
+  sf::Image result;
+  result.create(width, height, pixmap.data());
+  return result;
+}
+
+sf::Image
+Tinyraytracer::renderParralel(float anglev, float angleh, float anglel)
+{ 
+  const float fov = M_PI / 3.;
+  std::vector<unsigned char> pixmap(4 * width * height);
+  Vec3f ex(cos(angleh * M_PI / 180),
+           0,
+           -sin(angleh * M_PI / 180));
+  Vec3f ey(sin(anglev * M_PI / 180) * sin(angleh * M_PI / 180),
+           cos(anglev * M_PI / 180),
+           sin(anglev * M_PI / 180) * cos(angleh * M_PI / 180));
+  Vec3f ez(cos(anglev * M_PI / 180) * sin(angleh * M_PI / 180),
+           -sin(anglev * M_PI / 180),
+           cos(anglev * M_PI / 180) * cos(angleh * M_PI / 180));
+ 
   #pragma omp parallel for
   for (size_t j = 0; j < height; j++)
   { // actual rendering loop

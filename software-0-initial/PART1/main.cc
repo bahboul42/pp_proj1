@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
 		window.clear();
 		window.display();
 
-		sf::Image img = tinyraytracer.render(angle_v, angle_h, angle_logo);
+		sf::Image img = tinyraytracer.renderParralel(angle_v, angle_h, angle_logo);
 		texture.loadFromImage(img);
 		sprite.setTexture(texture);
 		window.draw(sprite);
@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
 			if (update)
 			{
 				static unsigned framecount = 0;
-				img = tinyraytracer.render(angle_v, angle_h, angle_logo);
+				img = tinyraytracer.renderParralel(angle_v, angle_h, angle_logo);
 				texture.loadFromImage(img);
 				window.clear();
 				window.draw(sprite);
@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
-		sf::Image result = tinyraytracer.render(0, 0, 15);
+		sf::Image result = tinyraytracer.renderParralel(0, 0, 15);
 		result.saveToFile("out.jpg");
 	}
 	return 0;

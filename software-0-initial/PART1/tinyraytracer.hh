@@ -64,6 +64,7 @@ public:
   void add_sphere(Sphere s) { spheres.push_back(s); };
   void add_light(Light l) { lights.push_back(l); };
   sf::Image render(float anglev, float angleh, float anglel);
+  sf::Image renderParralel(float anglev, float angleh, float anglel);
 private:
   bool scene_intersect(const Vec3f &orig, const Vec3f &dir, Vec3f &hit, Vec3f &N, float anglel,
 		       Material &material);

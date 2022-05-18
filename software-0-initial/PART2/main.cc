@@ -1,6 +1,8 @@
 #include <cstring>
-
-#include "threadpool.cpp"
+#include <thread>
+#include <queue>
+#include <mutex>
+#include <sstream>
 #include "tinyraytracer.hh"
 
 /*
@@ -9,6 +11,47 @@
 */
 #define WIDTH 512
 #define HEIGHT 384
+#define MAX_BUFFER_SIZE 10
+
+struct angles
+{
+	float angle_v;
+	float angle_h;
+	float angle_logo;
+	uint odr;
+};
+
+std::mutex mtx;
+
+std::queue<sf::Image> imgBfr;
+std::queue<angles> aglBfr;
+
+void computeImg(Tinyraytracer rt)
+{
+	std::stringstream msg;
+	msg << "Launched Thread" << std::endl;
+	std::cout << msg.str();
+	while (true)
+	{
+
+		mtx.lock();
+		if (aglBfr.empty())
+		{
+			mtx.unlock();
+			continue;
+		}
+
+		angles toCompute = aglBfr.front();
+		aglBfr.pop();
+		mtx.unlock();
+
+		sf::Image result = rt.render(toCompute.angle_v, toCompute.angle_h, toCompute.angle_logo);
+
+		mtx.lock();
+		imgBfr.push(result);
+		mtx.unlock();
+	}
+}
 
 int main(int argc, char *argv[])
 {
@@ -52,35 +95,34 @@ int main(int argc, char *argv[])
 	tinyraytracer.add_light(Light(Vec3f(30, 50, -25), 1.8));
 	tinyraytracer.add_light(Light(Vec3f(30, 20, 30), 1.7));
 
-	ThreadPool pool;
-
-
 	if (gui)
 	{
 		sf::RenderWindow window(sf::VideoMode(WIDTH, HEIGHT), "TinyRT");
 		sf::Image result;
 		sf::Texture texture;
 		sf::Sprite sprite;
-
-		
 		float angle_h = 0., angle_v = 0.;
 		float angle_logo = 15.;
-		int order = 0;
-
 		sf::Clock clock;
 		clock.restart();
-		pool.Start(tinyraytracer, window, clock, texture, sprite);
+
 		window.setFramerateLimit(150);
 		window.clear();
 		window.display();
 
-		// sf::Image img = tinyraytracer.render(angle_v, angle_h, angle_logo);
-		pool.addImage(angle_v, angle_h, angle_logo, order);
-		pool.notifyDisplay();
-		// texture.loadFromImage(img);
-		// sprite.setTexture(texture);
-		// window.draw(sprite);
-		// window.display();
+		std::vector<std::thread> ths;
+		for (size_t i = 0; i < (std::thread::hardware_concurrency() - 1); i++)
+		{
+			ths.push_back(std::thread(&computeImg, tinyraytracer));
+		}
+
+		sf::Image img = tinyraytracer.render(angle_v, angle_h, angle_logo);
+		uint order = 1;
+
+		texture.loadFromImage(img);
+		sprite.setTexture(texture);
+		window.draw(sprite);
+		window.display();
 
 		while (window.isOpen())
 		{
@@ -88,9 +130,13 @@ int main(int argc, char *argv[])
 			bool update = false;
 			if (animate)
 			{
-				order++;
+				mtx.lock();
+				if (aglBfr.size() < MAX_BUFFER_SIZE)
+				{
 				angle_logo += angle_logo >= 359. ? -359. : 1.;
 				update = true;
+				}
+				mtx.unlock();
 			}
 			if (window.pollEvent(event))
 			{
@@ -128,26 +174,53 @@ int main(int argc, char *argv[])
 						std::cerr << "Key pressed: "
 								  << "Space" << std::endl;
 					else if (event.key.code == sf::Keyboard::Q)
-					{
-						pool.Stop();
 						window.close();
-					}
 					else
 						std::cerr << "Key pressed: "
 								  << "Unknown" << std::endl;
 				}
 				if (event.type == sf::Event::Closed)
-				{
-					pool.Stop();
 					window.close();
-				}
 			}
 			if (update)
 			{
+				static unsigned framecount = 0;
 
-				pool.addImage(angle_v, angle_h, angle_logo, order);
-				pool.notifyDisplay();
-				// img = tinyraytracer.render(angle_v, angle_h, angle_logo);
+				angles toAdd;
+				toAdd.angle_v = angle_v;
+				toAdd.angle_h = angle_h;
+				toAdd.angle_logo = angle_logo;
+				toAdd.odr = order;
+
+				mtx.lock();
+				std::stringstream msg;
+				msg << aglBfr.size() << " " << imgBfr.size() << "\n";
+				std::cout << msg.str();
+				aglBfr.push(toAdd);
+				order++;
+
+				if (!imgBfr.empty())
+				{
+					img = imgBfr.front();
+					imgBfr.pop();
+
+					texture.loadFromImage(img);
+					window.clear();
+					window.draw(sprite);
+					window.display();
+					framecount++;
+					sf::Time currentTime = clock.getElapsedTime();
+					if (currentTime.asSeconds() > 1.0)
+					{
+						float fps = framecount / currentTime.asSeconds();
+						std::cout << "fps: " << fps << std::endl;
+						clock.restart();
+						framecount = 0;
+					}
+					mtx.unlock();
+				}
+				else
+					mtx.unlock();
 			}
 		}
 	}
