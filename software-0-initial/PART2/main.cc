@@ -3,8 +3,8 @@
 #include <queue>
 #include <mutex>
 #include <sstream>
+#include <atomic>
 #include "tinyraytracer.hh"
-
 /*
 #define WIDTH 1024
 #define HEIGHT 768
@@ -22,7 +22,7 @@ struct angles
 };
 
 std::mutex mtx;
-
+std::atomic<bool> should_terminate;
 std::queue<sf::Image> imgBfr;
 std::queue<angles> aglBfr;
 
@@ -33,7 +33,9 @@ void computeImg(Tinyraytracer rt)
 	std::cout << msg.str();
 	while (true)
 	{
-
+		if (should_terminate)
+			return;
+		
 		mtx.lock();
 		if (aglBfr.empty())
 		{
@@ -55,6 +57,7 @@ void computeImg(Tinyraytracer rt)
 
 int main(int argc, char *argv[])
 {
+	should_terminate = false;
 	bool gui = false, animate = false;
 
 	if (argc > 1)
@@ -118,11 +121,14 @@ int main(int argc, char *argv[])
 
 		sf::Image img = tinyraytracer.render(angle_v, angle_h, angle_logo);
 		uint order = 1;
+		uint order_displayed = 1;
 
 		texture.loadFromImage(img);
 		sprite.setTexture(texture);
 		window.draw(sprite);
 		window.display();
+
+		float fps = 50.;
 
 		while (window.isOpen())
 		{
@@ -133,8 +139,8 @@ int main(int argc, char *argv[])
 				mtx.lock();
 				if (aglBfr.size() < MAX_BUFFER_SIZE)
 				{
-				angle_logo += angle_logo >= 359. ? -359. : 1.;
-				update = true;
+					angle_logo += angle_logo >= 359. ? -359. : 3./fps;
+					update = true;
 				}
 				mtx.unlock();
 			}
@@ -173,14 +179,20 @@ int main(int argc, char *argv[])
 					else if (event.key.code == sf::Keyboard::Space)
 						std::cerr << "Key pressed: "
 								  << "Space" << std::endl;
-					else if (event.key.code == sf::Keyboard::Q)
-						window.close();
-					else
-						std::cerr << "Key pressed: "
-								  << "Unknown" << std::endl;
+					else if (event.key.code == sf::Keyboard::Q){
+											should_terminate = true;
+						for (size_t i = 0; i < std::thread::hardware_concurrency() - 1; i++)
+							ths.at(i).join();
+					window.close();}
+					else std::cerr << "Key pressed: "
+								   << "Unknown" << std::endl;
 				}
-				if (event.type == sf::Event::Closed)
-					window.close();
+				if (event.type == sf::Event::Closed){
+					should_terminate = true;
+					for (size_t i = 0; i < std::thread::hardware_concurrency() - 1; i++)
+						ths.at(i).join();
+
+				window.close();}
 			}
 			if (update)
 			{
@@ -193,9 +205,9 @@ int main(int argc, char *argv[])
 				toAdd.odr = order;
 
 				mtx.lock();
-				std::stringstream msg;
-				msg << aglBfr.size() << " " << imgBfr.size() << "\n";
-				std::cout << msg.str();
+				// std::stringstream msg;
+				// msg << aglBfr.size() << " " << imgBfr.size() << "\n";
+				// std::cout << msg.str();
 				aglBfr.push(toAdd);
 				order++;
 
@@ -203,16 +215,18 @@ int main(int argc, char *argv[])
 				{
 					img = imgBfr.front();
 					imgBfr.pop();
+					aglBfr.pop();
 
 					texture.loadFromImage(img);
 					window.clear();
 					window.draw(sprite);
 					window.display();
+					order_displayed++;
 					framecount++;
 					sf::Time currentTime = clock.getElapsedTime();
 					if (currentTime.asSeconds() > 1.0)
 					{
-						float fps = framecount / currentTime.asSeconds();
+						fps = framecount / currentTime.asSeconds();
 						std::cout << "fps: " << fps << std::endl;
 						clock.restart();
 						framecount = 0;
